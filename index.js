@@ -3,6 +3,7 @@ import { Server } from "socket.io";
 import { createServer } from "http";
 import cors from "cors";
 
+const PORT = process.env.PORT || 3001;
 const app = express();
 const server = createServer(app);
 
@@ -14,6 +15,7 @@ const io = new Server(server, {
         credentials: true,
     },
 });
+
 
 let users = [];
 
@@ -83,6 +85,8 @@ app.get("/", (req, res) => {
     res.status(200).send("Hello World!");
 });
 
-server.listen(3001, () => {
+server.listen(PORT, () => {
     console.log("Server is running on port 3001");
 });
+
+module.exports = app;
