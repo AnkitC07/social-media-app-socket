@@ -89,4 +89,4 @@ server.listen(PORT, () => {
     console.log("Server is running on port 3001");
 });
 
-module.exports = app;
+export default app;
