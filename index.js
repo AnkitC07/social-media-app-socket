@@ -9,13 +9,12 @@ const server = createServer(app);
 
 const io = new Server(server, {
     cors: {
-        // origin: "http://localhost:3000",
-        origin: "https://social-media-app-gray-beta.vercel.app",
+        origin: "http://localhost:3000",
+        // origin: "https://social-media-app-gray-beta.vercel.app",
         methods: ["GET", "POST"],
         credentials: true,
     },
 });
-
 
 let users = [];
 
@@ -47,10 +46,11 @@ io.on("connection", (socket) => {
     //         io.emit('getUsers', users);
     //     }
     // });
+
     console.log("connected users", users);
 
-    socket.on("follow", ({ type, senderId, receiverId }) => {
-        console.log("Follow :>> ", type, senderId, receiverId);
+    socket.on("follow", async ({ type,token, senderId, receiverId }) => {
+        console.log("Follow :>> ", type,token, senderId, receiverId);
         const receiver = users.find((e) => e.user_id === receiverId);
         const sender = users.find((e) => e.user_id === senderId);
         console.log("-->", receiver, sender);
@@ -60,11 +60,20 @@ io.on("connection", (socket) => {
         //   receiverId,
         //   type,
         // });
-
-         io.to(receiver?.socketId).emit("new_friend_request", {
-            message: "New friend request received",
-            type,
-        });
+        if (type === "follow") {
+            const response = await fetch("http://localhost:3000/api/getuser?id=" + sender.user_id, {
+                credentials: 'include',
+                headers: {
+                    'token':token.value
+                }
+            });
+            const userData = await response.json()
+            console.log("userdata->", userData);
+            io.to(receiver?.socketId).emit("new_friend_request", {
+                message: `${userData?.user?.username} started following you`,
+                username: userData?.user?.username,
+            });
+        }
         io.to(sender?.socketId).emit("request_sent", {
             message: "Request Sent successfully!",
             type,
@@ -73,7 +82,7 @@ io.on("connection", (socket) => {
 
     socket.on("disconnect", () => {
         console.log("disconnected: " + socket.id);
-        users = users.filter((user) => user.socketId!== socket.id);
+        users = users.filter((user) => user.socketId !== socket.id);
         socket.disconnect();
     });
     // io.disconnectSockets(true)
@@ -88,5 +97,4 @@ app.get("/", (req, res) => {
 server.listen(PORT, () => {
     console.log("Server is running on port 3001");
 });
-
-module.exports = app;
+export default app;
