@@ -10,14 +10,11 @@ const url = "https://social-media-app-gray-beta.vercel.app"
 
 const io = new Server(server, {
     cors: {
-        // origin: "http://localhost:3000",
-        origin: url,
+        origin: "https://social-media-app-gray-beta.vercel.app/",
         methods: ["GET", "POST"],
-        credentials: true,
+        // credentials: true,
     },
 });
-
-io.use(cors())
 
 let users = [];
 
@@ -64,7 +61,7 @@ io.on("connection", (socket) => {
         //   type,
         // });
         if (type === "follow") {
-            const response = await fetch(url + "/api/getuser?id=" + sender.user_id, {
+            const response = await fetch("https://social-media-app-gray-beta.vercel.app/api/getuser?id=" + sender.user_id, {
                 credentials: 'include',
                 headers: {
                     'token':token.value
