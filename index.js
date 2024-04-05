@@ -6,15 +6,18 @@ import cors from "cors";
 const PORT = process.env.PORT || 3001;
 const app = express();
 const server = createServer(app);
+const url = "https://social-media-app-gray-beta.vercel.app"
 
 const io = new Server(server, {
     cors: {
         // origin: "http://localhost:3000",
-        origin: "https://social-media-app-gray-beta.vercel.app",
+        origin: url,
         methods: ["GET", "POST"],
         credentials: true,
     },
 });
+
+io.use(cors())
 
 let users = [];
 
@@ -61,7 +64,7 @@ io.on("connection", (socket) => {
         //   type,
         // });
         if (type === "follow") {
-            const response = await fetch("http://localhost:3000/api/getuser?id=" + sender.user_id, {
+            const response = await fetch(url + "/api/getuser?id=" + sender.user_id, {
                 credentials: 'include',
                 headers: {
                     'token':token.value
