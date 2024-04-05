@@ -10,7 +10,7 @@ const url = "https://social-media-app-gray-beta.vercel.app"
 
 const io = new Server(server, {
     cors: {
-        origin: "https://social-media-app-gray-beta.vercel.app/",
+        origin: "https://social-media-app-gray-beta.vercel.app",
         methods: ["GET", "POST"],
         // credentials: true,
     },
