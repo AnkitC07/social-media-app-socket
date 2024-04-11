@@ -16,7 +16,7 @@ const url = "https://social-media-app-gray-beta.vercel.app";
 
 const io = new Server(server, {
     cors: {
-        origin: "https://social-media-app-gray-beta.vercel.app",
+        origin: "http://localhost:3000",
         methods: ["GET", "POST"],
         // credentials: true,
     },
@@ -57,13 +57,13 @@ io.on("connection", async (socket) => {
                     new: true,
                 }
             );
-            // const isUserExist = users.find((user) => user.user_Id === user_id);
-            // if (!isUserExist) {
-            //     const user = { user_id, socketId: socket.id };
-            //     users.push(user);
-            //     console.log("pushing user", user);
-            //     io.emit("getUsers", users);
-            // }
+            const isUserExist = users.find((user) => user.user_Id === user_id);
+            if (!isUserExist) {
+                const user = { user_id, socketId: socket.id };
+                users.push(user);
+                // console.log("pushing user", user);
+                // io.emit("getUsers", users);
+            }
             console.log("user connected:", user.socket_id);
         } catch (e) {
             console.log(e);
@@ -83,20 +83,21 @@ io.on("connection", async (socket) => {
         //   type,
         // });
         if (type === "follow") {
-            const response = await fetch(
-                "https://social-media-app-gray-beta.vercel.app/api/getuser?id=" + sender.user_id,
-                {
-                    credentials: "include",
-                    headers: {
-                        token: token.value,
-                    },
-                }
-            );
-            const userData = await response.json();
+            // const response = await fetch(
+            //     "https://social-media-app-gray-beta.vercel.app/api/getuser?id=" + sender.user_id,
+            //     {
+            //         credentials: "include",
+            //         headers: {
+            //             token: token.value,
+            //         },
+            //     }
+            // );
+            // const userData = await response.json();
+            const userData = await User.findOne( { _id: sender?.user_id }).select("username");
             console.log("userdata->", userData);
             io.to(receiver?.socketId).emit("new_friend_request", {
-                message: `${userData?.user?.username} started following you`,
-                username: userData?.user?.username,
+                message: `${userData?.username} started following you`,
+                username: userData?.username,
             });
         }
         io.to(sender?.socketId).emit("request_sent", {
@@ -107,7 +108,9 @@ io.on("connection", async (socket) => {
 
     // Gets the list of conversatio of users
     socket.on("get_direct_conversations", async ({ user_id }, callback) => {
-        console.log("get_direct_conversations: ",user_id)
+        
+        console.log("get_direct_conversations: ", user_id);
+
         const existing_conversations = await OneToOneMessage.find({
             participants: { $all: [user_id] },
         }).populate("participants", "fullName username avatar _id email isActive");
@@ -156,7 +159,46 @@ io.on("connection", async (socket) => {
 
     socket.on("get_messages", async (data, callback) => {
         try {
-            const { messages } = await OneToOneMessage.findById(data.conversation_id).select("messages");
+
+
+            
+            const MessageData = await OneToOneMessage.aggregate([
+                {
+                  $match: { // Filter by conversation ID
+                    _id: new mongoose.Types.ObjectId(data.conversation_id), // Cast conversationId to ObjectId
+                  },
+                },
+                {
+                  $unwind: "$messages", // Unwind the messages array
+                },
+                {
+                  $sort: { "messages.created_at": -1 }, // Sort by created_at descending
+                },
+                {
+                  $limit: 20, // Limit to the last 20 messages
+                },
+                {
+                    $sort: { "messages.created_at": 1 }, // Sort by created_at descending
+                },
+                {
+                  $group: { // Group back into an object with the messages array
+                    _id: null, // Set the group ID to null (optional)
+                    messages: { $push: "$messages" }, // Push messages into an array
+                  },
+                },
+                // {
+                //   $project: { // Project the desired fields (optional)
+                //     // _id: 0, // Exclude the default _id field
+                //     messages: 1, // Include the messages array
+                //   },
+                // },
+            ])
+            const messages = MessageData[0].messages
+            // console.log('get messages socket: ');
+            // const { messages } = await OneToOneMessage.findById(data.conversation_id)
+            //     .select("messages")
+            //     .sort({ "messages.date": -1 }) // Leverage the index for efficient sorting
+            //     .limit(20);
             callback(messages);
         } catch (error) {
             console.log(error);
@@ -197,7 +239,7 @@ io.on("connection", async (socket) => {
             message: new_message,
         });
 
-        // emit outgoing_message -> from user
+        // // emit outgoing_message -> from user
         io.to(from_user?.socket_id).emit("new_message", {
             conversation_id,
             message: new_message,
@@ -235,7 +277,7 @@ io.on("connection", async (socket) => {
     socket.on("end", async (data) => {
         // Find user by ID and set status as offline
 
-        if (data.user_id) {
+        if (data.user_id) { 
             await User.findByIdAndUpdate(data.user_id, { isActive: false });
         }
 
