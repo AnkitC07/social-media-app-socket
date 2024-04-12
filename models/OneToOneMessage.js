@@ -19,7 +19,7 @@ const oneToOneMessageSchema = new mongoose.Schema({
       },
       type: {
         type: String,
-        enum: ["Text", "Media", "Document", "Link"],
+        enum: ["Text", "img", "Document", "Link"],
       },
       created_at: {
         type: Date,
@@ -28,9 +28,9 @@ const oneToOneMessageSchema = new mongoose.Schema({
       text: {
         type: String,
       },
-      file: {
+      file: [{
         type: String,
-      },
+      }],
     },
   ],
 });

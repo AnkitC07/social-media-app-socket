@@ -6,6 +6,7 @@ import { Server } from "socket.io";
 import { createServer } from "http";
 import User from "./models/userModel.js";
 import OneToOneMessage from "./models/OneToOneMessage.js";
+import cloudinary from "./cloudnary/cldConfig.js";
 dotenv.config();
 
 const PORT = process.env.PORT || 3001;
@@ -15,6 +16,7 @@ const url = "https://social-media-app-gray-beta.vercel.app";
 // const url = "https://social-media-app-gray-beta.vercel.app";
 
 const io = new Server(server, {
+    maxHttpBufferSize: 1e8,
     cors: {
         origin: "https://social-media-app-gray-beta.vercel.app",
         methods: ["GET", "POST"],
@@ -37,6 +39,43 @@ mongoose
 
 let users = [];
 let user;
+
+
+
+
+
+const uploadFiles = async (files) => {
+    const uploadedFiles = Object.values(files);
+
+    const cloudinaryPromises = await uploadedFiles.map(async (file) => {
+        console.log("-=-=-=-=-=-", file);
+ 
+        const fileStream = file;
+        const base64Data = fileStream.toString("base64");
+        const finalData = `data:image/jpg;base64,` + base64Data;
+        const uploadMethod = (file.length / 1e6).toFixed(2) > 10 * 1024 * 1024 ? "upload_large" : "upload";
+        // Configure your preferred transformation options here
+        console.log(("length=",file.length / 1e6).toFixed(2));
+        let options = {
+            use_filename: true,
+            unique_filename: false,
+            overwrite: true,
+            folder: "Social-Media-App/Chat",
+            resource_type: "auto",
+        }; // Customize according to your requirements
+
+        if (uploadMethod === "upload_large") {
+            return cloudinary.uploader[uploadMethod](finalData, options);
+        } else {
+            return cloudinary.uploader[uploadMethod](finalData, options);
+        }
+    });
+
+    const cloudinaryResponses = await Promise.all(cloudinaryPromises);
+
+    // Respond with uploaded file URLs or other relevant data
+    return cloudinaryResponses.map((response) => response.secure_url);
+};
 
 io.on("connection", async (socket) => {
     console.log(JSON.stringify(socket.handshake.query));
@@ -93,7 +132,7 @@ io.on("connection", async (socket) => {
             //     }
             // );
             // const userData = await response.json();
-            const userData = await User.findOne( { _id: sender?.user_id }).select("username");
+            const userData = await User.findOne({ _id: sender?.user_id }).select("username");
             console.log("userdata->", userData);
             io.to(receiver?.socketId).emit("new_friend_request", {
                 message: `${userData?.username} started following you`,
@@ -108,7 +147,6 @@ io.on("connection", async (socket) => {
 
     // Gets the list of conversatio of users
     socket.on("get_direct_conversations", async ({ user_id }, callback) => {
-        
         console.log("get_direct_conversations: ", user_id);
 
         const existing_conversations = await OneToOneMessage.find({
@@ -159,32 +197,32 @@ io.on("connection", async (socket) => {
 
     socket.on("get_messages", async (data, callback) => {
         try {
-
-
-            
+            console.log("get_messages");
             const MessageData = await OneToOneMessage.aggregate([
                 {
-                  $match: { // Filter by conversation ID
-                    _id: new mongoose.Types.ObjectId(data.conversation_id), // Cast conversationId to ObjectId
-                  },
+                    $match: {
+                        // Filter by conversation ID
+                        _id: new mongoose.Types.ObjectId(data.conversation_id), // Cast conversationId to ObjectId
+                    },
                 },
                 {
-                  $unwind: "$messages", // Unwind the messages array
+                    $unwind: "$messages", // Unwind the messages array
                 },
                 {
-                  $sort: { "messages.created_at": -1 }, // Sort by created_at descending
+                    $sort: { "messages.created_at": -1 }, // Sort by created_at descending
                 },
                 {
-                  $limit: 20, // Limit to the last 20 messages
+                    $limit: 20, // Limit to the last 20 messages
                 },
                 {
                     $sort: { "messages.created_at": 1 }, // Sort by created_at descending
                 },
                 {
-                  $group: { // Group back into an object with the messages array
-                    _id: null, // Set the group ID to null (optional)
-                    messages: { $push: "$messages" }, // Push messages into an array
-                  },
+                    $group: {
+                        // Group back into an object with the messages array
+                        _id: null, // Set the group ID to null (optional)
+                        messages: { $push: "$messages" }, // Push messages into an array
+                    },
                 },
                 // {
                 //   $project: { // Project the desired fields (optional)
@@ -192,8 +230,8 @@ io.on("connection", async (socket) => {
                 //     messages: 1, // Include the messages array
                 //   },
                 // },
-            ])
-            const messages = MessageData[0].messages
+            ]);
+            const messages = MessageData[0]?.messages ?? [];
             // console.log('get messages socket: ');
             // const { messages } = await OneToOneMessage.findById(data.conversation_id)
             //     .select("messages")
@@ -217,6 +255,8 @@ io.on("connection", async (socket) => {
         const from_user = await User.findById(from);
 
         // message => {to, from, type, created_at, text, file}
+
+      
 
         const new_message = {
             to: to,
@@ -247,16 +287,53 @@ io.on("connection", async (socket) => {
     });
 
     // handle Media/Document Message
-    socket.on("file_message", (data) => {
+    socket.on("file_message", async (data) => {
         console.log("Received message:", data);
 
         // data: {to, from, text, file}
 
+        const { message, conversation_id, from, to, type, file } = data;
+
+        const to_user = await User.findById(to);
+        const from_user = await User.findById(from);
+
+        const secure_url = await uploadFiles(file);
+        console.log("URLs=>", secure_url)
+        
+        const new_message = {
+            to: to,
+            from: from,
+            type: type,
+            created_at: Date.now(),
+            file: secure_url,
+            text:message
+        };
+
+
+        // fetch OneToOneMessage Doc & push a new message to existing conversation
+        const chat = await OneToOneMessage.findById(conversation_id);
+        chat.messages.push(new_message);
+        // save to db`
+        await chat.save({ new: true, validateModifiedOnly: true });
+
+        // emit incoming_message -> to user
+
+        io.to(to_user?.socket_id).emit("new_message", {
+            conversation_id,
+            message: new_message,
+        });
+
+        // // emit outgoing_message -> from user
+        io.to(from_user?.socket_id).emit("new_message", {
+            conversation_id,
+            message: new_message,
+        });
+
         // Get the file extension
-        const fileExtension = path.extname(data.file.name);
+        // const fileExtension = path.extname(data.file.name);
 
         // Generate a unique filename
-        const filename = `${Date.now()}_${Math.floor(Math.random() * 10000)}${fileExtension}`;
+        // const filename = `${Date.now()}_${Math.floor(Math.random() * 10000)}${fileExtension}`;
 
         // upload file to AWS s3
 
@@ -277,7 +354,7 @@ io.on("connection", async (socket) => {
     socket.on("end", async (data) => {
         // Find user by ID and set status as offline
 
-        if (data.user_id) { 
+        if (data.user_id) {
             await User.findByIdAndUpdate(data.user_id, { isActive: false });
         }
 
