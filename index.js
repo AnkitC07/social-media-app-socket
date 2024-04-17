@@ -151,7 +151,7 @@ io.on("connection", async (socket) => {
 
         const existing_conversations = await OneToOneMessage.find({
             participants: { $all: [user_id] },
-        }).populate("participants", "fullName username avatar _id email isActive");
+        }).populate("participants", "fullName username avatar _id email isActive").select('participants lastMsg lastMsgDate').sort({lastMsgDate:-1}); 
 
         // db.books.find({ authors: { $elemMatch: { name: "John Smith" } } })
 
