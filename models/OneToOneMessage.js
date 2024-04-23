@@ -35,15 +35,18 @@ const oneToOneMessageSchema = new mongoose.Schema({
       }],
     },
   ],
+  
 });
 
 
 // Using a middleware (recommended for data integrity)
 oneToOneMessageSchema.pre('save', async function (next) {
-  if (this.messages.length > 1) {
+  console.log("lastMsg update",this.messages)
+  if (this.messages.length > 0) {
     this.lastMsg = (this.messages.slice(-1))[0]?.text; // Keep only the last message
     this.lastMsgDate = Date.now(); 
   }
+
   next(); // Proceed with saving
 });
 

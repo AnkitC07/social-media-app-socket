@@ -22,7 +22,9 @@ const io = new Server(server, {
         methods: ["GET", "POST"],
         // credentials: true,
     },
+    // wsEngine:'ws'
 });
+// let socketio = Server(logger=True, engineio_logger=True)
 mongoose
     .connect(process.env.MONGO_URI, {
         // useNewUrlParser: true, // The underlying MongoDB driver has deprecated their current connection string parser. Because this is a major change, they added the useNewUrlParser flag to allow users to fall back to the old parser if they find a bug in the new parser.
@@ -40,22 +42,18 @@ mongoose
 let users = [];
 let user;
 
-
-
-
-
 const uploadFiles = async (files) => {
     const uploadedFiles = Object.values(files);
 
-    const cloudinaryPromises = await uploadedFiles.map(async (file) => {
+    const cloudinaryPromises = uploadedFiles.map(async (file) => {
         console.log("-=-=-=-=-=-", file);
- 
+
         const fileStream = file;
         const base64Data = fileStream.toString("base64");
         const finalData = `data:image/jpg;base64,` + base64Data;
         const uploadMethod = (file.length / 1e6).toFixed(2) > 10 * 1024 * 1024 ? "upload_large" : "upload";
         // Configure your preferred transformation options here
-        console.log(("length=",file.length / 1e6).toFixed(2));
+        console.log(("length=", file.length / 1e6).toFixed(2));
         let options = {
             use_filename: true,
             unique_filename: false,
@@ -75,6 +73,18 @@ const uploadFiles = async (files) => {
 
     // Respond with uploaded file URLs or other relevant data
     return cloudinaryResponses.map((response) => response.secure_url);
+};
+
+// Create a new Conversation
+const newConversationOrUpdate = async ({to,from,conversation_id}) => {
+    if (conversation_id === "new") {
+        let new_chat = await OneToOneMessage.create({
+            participants: [to, from],
+        });
+
+        return new_chat._id;
+    }
+    return conversation_id;
 };
 
 io.on("connection", async (socket) => {
@@ -151,7 +161,10 @@ io.on("connection", async (socket) => {
 
         const existing_conversations = await OneToOneMessage.find({
             participants: { $all: [user_id] },
-        }).populate("participants", "fullName username avatar _id email isActive").select('participants lastMsg lastMsgDate').sort({lastMsgDate:-1}); 
+        })
+            .populate("participants", "fullName username avatar _id email isActive")
+            .select("participants lastMsg lastMsgDate")
+            .sort({ lastMsgDate: -1 });
 
         // db.books.find({ authors: { $elemMatch: { name: "John Smith" } } })
 
@@ -176,18 +189,15 @@ io.on("connection", async (socket) => {
 
         // if no => create a new OneToOneMessage doc & emit event "start_chat" & send conversation details as payload
         if (existing_conversations.length === 0) {
-            let new_chat = await OneToOneMessage.create({
-                participants: [to, from],
-            });
-
-            new_chat = await OneToOneMessage.findById(new_chat).populate(
-                "participants",
-                "fullName username avatar _id email isActive"
-            );
-
-            console.log(new_chat);
-
-            socket.emit("start_chat", new_chat);
+            // let new_chat = await OneToOneMessage.create({
+            //     participants: [to, from],
+            // });
+            // new_chat = await OneToOneMessage.findById(new_chat).populate(
+            //     "participants",
+            //     "fullName username avatar _id email isActive"
+            // );
+            // console.log(new_chat);
+            // socket.emit("start_chat", new_chat);
         }
         // if yes => just emit event "start_chat" & send conversation details as payload
         else {
@@ -256,8 +266,6 @@ io.on("connection", async (socket) => {
 
         // message => {to, from, type, created_at, text, file}
 
-      
-
         const new_message = {
             to: to,
             from: from,
@@ -266,8 +274,12 @@ io.on("connection", async (socket) => {
             text: message,
         };
 
+        const newConversationId = await newConversationOrUpdate(data);
+        
+        console.log('newConversation=',newConversationId)
+
         // fetch OneToOneMessage Doc & push a new message to existing conversation
-        const chat = await OneToOneMessage.findById(conversation_id);
+        const chat = await OneToOneMessage.findById(newConversationId);
         chat.messages.push(new_message);
         // save to db`
         await chat.save({ new: true, validateModifiedOnly: true });
@@ -275,13 +287,13 @@ io.on("connection", async (socket) => {
         // emit incoming_message -> to user
 
         io.to(to_user?.socket_id).emit("new_message", {
-            conversation_id,
+            conversation_id: newConversationId,
             message: new_message,
         });
 
         // // emit outgoing_message -> from user
         io.to(from_user?.socket_id).emit("new_message", {
-            conversation_id,
+            conversation_id: newConversationId,
             message: new_message,
         });
     });
@@ -298,20 +310,22 @@ io.on("connection", async (socket) => {
         const from_user = await User.findById(from);
 
         const secure_url = await uploadFiles(file);
-        console.log("URLs=>", secure_url)
-        
+        console.log("URLs=>", secure_url);
+
         const new_message = {
             to: to,
             from: from,
             type: type,
             created_at: Date.now(),
             file: secure_url,
-            text:message
+            text: message,
         };
 
-
+        const newConversationId = await newConversationOrUpdate(data);
+        
+        console.log('newConversation=',newConversationId)
         // fetch OneToOneMessage Doc & push a new message to existing conversation
-        const chat = await OneToOneMessage.findById(conversation_id);
+        const chat = await OneToOneMessage.findById(newConversationId);
         chat.messages.push(new_message);
         // save to db`
         await chat.save({ new: true, validateModifiedOnly: true });
@@ -319,13 +333,13 @@ io.on("connection", async (socket) => {
         // emit incoming_message -> to user
 
         io.to(to_user?.socket_id).emit("new_message", {
-            conversation_id,
+            conversation_id: newConversationId,
             message: new_message,
         });
 
         // // emit outgoing_message -> from user
         io.to(from_user?.socket_id).emit("new_message", {
-            conversation_id,
+            conversation_id: newConversationId,
             message: new_message,
         });
 
